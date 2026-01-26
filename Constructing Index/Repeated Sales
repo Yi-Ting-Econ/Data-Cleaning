@@ -13,7 +13,7 @@ import numpy as np
 # -----------------------------
 # Settings
 # -----------------------------
-dta_file   = "/project/cl/work_folder/mls_hmda_lu/data/mls/MLS_panel_hedonic_TOM_2011_2022.dta" // Input the dataset with unadjusted days on market
+dta_file   = "/project/cl/work_folder/mls_hmda_lu/data/mls/MLS_panel_extracted.dta" // Input the dataset with unadjusted days on market
 out_dir    = "/project/cl/work_folder/mls_hmda_lu/data/YT"
 base_year  = 2015
 base_month = 1
