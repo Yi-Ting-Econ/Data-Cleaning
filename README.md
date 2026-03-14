@@ -17,17 +17,23 @@ The repeated-listing index isolates **market-wide changes in time on market** by
 
 For example, we observe in the data:
 
-Listing history for Property A
-|---|---|
-├── Listing 1: 2013 TOM = 40 days
+```
+Property A
 │
-├── Listing 2: 2016 TOM = 55 days
+├── Listing 1: 2013   TOM = 40 days
 │
-└── Listing 3: 2019 TOM = 30 days
+├── Listing 2: 2016   TOM = 55 days
+│
+└── Listing 3: 2019   TOM = 30 days
+```
 
 Construct pairs:
+
+```
 (2013 → 2016)
 (2016 → 2019)
+```
+
 Each pair contributes to estimating changes in the TOM index.
 
 
