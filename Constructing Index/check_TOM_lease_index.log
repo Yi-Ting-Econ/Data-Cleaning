@@ -1,0 +1,50 @@
+-----------------------------------------------------------------------------------------------------------------------------------------------------------------------
+      name:  <unnamed>
+       log:  \\researchdrive.ssc.wisc.edu\project\housing cost channel\working_code\estimating_irf\log/check_TOM_lease_index.log
+  log type:  text
+ opened on:  14 Mar 2026, 12:15:58
+
+. 
+. use "data/zip_month_tom_index_python_revised.dta", clear
+
+. 
+. codebook tom_index
+
+-----------------------------------------------------------------------------------------------------------------------------------------------------------------------
+tom_index                                                                                                                                                   (unlabeled)
+-----------------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+                  Type: Numeric (double)
+
+                 Range: [.06901173,74517.561]         Units: 1.000e-09
+         Unique values: 30,263                    Missing .: 6,672/37,224
+
+                  Mean: 175.119
+             Std. dev.: 604.078
+
+           Percentiles:     10%       25%       50%       75%       90%
+                        27.4605   53.5645   98.6045   169.256   308.278
+
+. 
+. gen month_tm = ym(year, month)
+
+. format month_tm %tm
+
+. 
+. collapse (mean) tom_index, by(month_tm)
+
+. 
+. twoway line tom_index month_tm
+
+. 
+. graph export "output/check_TOM_lease_index.png", replace width(2000)
+(file output/check_TOM_lease_index.png not found)
+file output/check_TOM_lease_index.png saved as PNG format
+
+. 
+. log c
+      name:  <unnamed>
+       log:  \\researchdrive.ssc.wisc.edu\project\housing cost channel\working_code\estimating_irf\log/check_TOM_lease_index.log
+  log type:  text
+ closed on:  14 Mar 2026, 12:15:59
+-----------------------------------------------------------------------------------------------------------------------------------------------------------------------
