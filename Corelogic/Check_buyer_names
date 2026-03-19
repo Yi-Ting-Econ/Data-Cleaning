@@ -1,0 +1,160 @@
+#%%
+import os
+import pandas as pd
+from collections import Counter
+
+# ----------------------------
+# Paths & settings
+# ----------------------------
+path_template = "..edit path here/Ownertransfer_{year}.csv"
+owner_out_parquet = "..edit path here/output/check_owner_info.parquet"
+
+# ----------------------------
+# Columns to keep
+# ----------------------------
+selected_cols = [
+    'OWNER TRANSFER COMPOSITE TRANSACTION ID',
+    'COMPOSITE PROPERTY LINKAGE KEY',
+    'SALE DERIVED DATE',
+    'SALE DERIVED RECORDING DATE',
+    'MORTGAGE PURCHASE INDICATOR',
+    'PRIMARY CATEGORY CODE',
+    'BUYER MAILING ZIP CODE',
+    'DEED SITUS ZIP CODE - STATIC',
+    'INVESTOR PURCHASE INDICATOR',
+    'CASH PURCHASE INDICATOR',
+    'BUYER OCCUPANCY CODE',
+    'PROPERTY INDICATOR CODE - STATIC',
+    'BUYER 1 CORPORATE INDICATOR',
+    'BUYER 2 CORPORATE INDICATOR',
+    'BUYER 3 CORPORATE INDICATOR',
+    'BUYER 4 CORPORATE INDICATOR',
+    'BUYER 1 FULL NAME',
+    'BUYER 2 FULL NAME',
+    'BUYER 3 FULL NAME',
+    'BUYER 4 FULL NAME',
+    'DEED SITUS STREET ADDRESS - STATIC',
+    'DEED SITUS STREET NAME - STATIC',
+    'DEED SITUS CITY - STATIC',
+    'DEED SITUS STATE - STATIC'
+]
+
+# ----------------------------
+# Shortened names
+# ----------------------------
+rename_map = {
+    'OWNER TRANSFER COMPOSITE TRANSACTION ID': 'owner_trans_id',
+    'COMPOSITE PROPERTY LINKAGE KEY': 'prop_link_key',
+    'SALE DERIVED DATE': 'sale_date',
+    'SALE DERIVED RECORDING DATE': 'sale_rec_date',
+    'MORTGAGE PURCHASE INDICATOR': 'mortgage_purchase',
+    'PRIMARY CATEGORY CODE': 'category_code',
+    'BUYER MAILING ZIP CODE': 'buyer_zip',
+    'DEED SITUS ZIP CODE - STATIC': 'deed_zip',
+    'INVESTOR PURCHASE INDICATOR': 'investor_purchase',
+    'CASH PURCHASE INDICATOR': 'cash_purchase',
+    'BUYER OCCUPANCY CODE': 'buyer_occupancy',
+    'PROPERTY INDICATOR CODE - STATIC': 'property_type',
+    'BUYER 1 CORPORATE INDICATOR': 'buyer1_corporate',
+    'BUYER 2 CORPORATE INDICATOR': 'buyer2_corporate',
+    'BUYER 3 CORPORATE INDICATOR': 'buyer3_corporate',
+    'BUYER 4 CORPORATE INDICATOR': 'buyer4_corporate',
+    'BUYER 1 FULL NAME': 'buyer1_name',
+    'BUYER 2 FULL NAME': 'buyer2_name',
+    'BUYER 3 FULL NAME': 'buyer3_name',
+    'BUYER 4 FULL NAME': 'buyer4_name',
+    'DEED SITUS STREET ADDRESS - STATIC': 'street_address',
+    'DEED SITUS STREET NAME - STATIC': 'street_name',
+    'DEED SITUS CITY - STATIC': 'deed_city',
+    'DEED SITUS STATE - STATIC': 'deed_state'
+}
+
+#%%
+dfs = []
+name_counter = Counter()
+
+for year in range(2022, 2023): 
+    try:
+        print(f"Processing year {year}...")
+
+        df = pd.read_csv(
+            path_template.format(year=year),
+            usecols=selected_cols,
+            dtype=str,
+            low_memory=False
+        )
+
+        df["year"] = year
+        df = df.rename(columns=rename_map)
+
+        # clean owner names and count appearances
+        name_cols = ["buyer1_name", "buyer2_name", "buyer3_name", "buyer4_name"]
+        for col in name_cols:
+            df[col] = (
+                df[col]
+                .astype("string")
+                .str.strip()
+                .replace({"": pd.NA, "nan": pd.NA, "None": pd.NA})
+            )
+
+            valid_names = df[col].dropna()
+            name_counter.update(valid_names.tolist())
+
+        dfs.append(df)
+
+    except FileNotFoundError:
+        print(f"File for {year} not found, skipping.")
+    except ValueError as e:
+        print(f"ValueError for {year}: {e}. Skipping this year.")
+
+# ----------------------------
+# Concatenate
+# ----------------------------
+if not dfs:
+    raise RuntimeError("No Ownertransfer files were read successfully.")
+
+ownertransfer_all = pd.concat(dfs, ignore_index=True)
+
+# ----------------------------
+# Save to Stata (.dta)
+# ----------------------------
+owner_out_dta = "../output/check_owner_info.dta"
+
+# ensure Stata compatibility (very important for your data)
+def make_stata_safe(df):
+    df = df.copy()
+    for col in df.columns:
+        if df[col].dtype == "object" or str(df[col].dtype).startswith("string"):
+            df[col] = df[col].astype(str)
+            df.loc[df[col].isin(["None", "nan", "NaT"]), col] = ""
+    return df
+
+ownertransfer_all_stata = make_stata_safe(ownertransfer_all)
+
+ownertransfer_all_stata.to_stata(
+    owner_out_dta,
+    write_index=False,
+    version=118   # supports long variable names
+)
+
+print(f"\nSaved Ownertransfer to:\n{owner_out_dta}")
+
+
+# ----------------------------
+# Save parquet
+# ----------------------------
+ownertransfer_all.to_parquet(owner_out_parquet, engine="pyarrow", index=False)
+print(f"\nSaved Ownertransfer to:\n{owner_out_parquet}")
+
+# ----------------------------
+# Quick sanity check
+# ----------------------------
+print("\nOwnertransfer shape:")
+print(ownertransfer_all.shape)
+
+# ----------------------------
+# Top 5 owner names
+# ----------------------------
+print("\nTop 5 owner names in the data:")
+for i, (name, count) in enumerate(name_counter.most_common(20), start=1):
+    print(f"{i}. {name}: {count}")
