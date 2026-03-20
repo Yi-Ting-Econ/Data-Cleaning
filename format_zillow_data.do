@@ -1,0 +1,111 @@
+capture log c
+clear all
+set more off
+
+cd "\\researchdrive.ssc.wisc.edu\project\housing cost channel\working_code\estimating_irf"
+
+/**********************************************************************
+Zillow CSV -> country-level monthly series (.dta)
+Handles the case where date headers are imported as VARIABLE LABELS
+(e.g., v6 label "2000-01-31")
+
+Output columns:
+  - month (%tm)
+  - zillow_price_country_level
+**********************************************************************/
+
+log using "logfiles/format_zillow", replace t
+
+*========================
+* User settings
+*========================
+local in_csv  "data/Metro_zhvi_uc_sfrcondo_tier_0.33_0.67_sm_sa_month.csv"
+local out_dta "data/zillow_price_country_level.dta"
+
+*========================
+* 1-2) Read CSV; force ALL columns to string
+*========================
+import delimited using "`in_csv'", clear varnames(1) stringcols(_all)
+
+*------------------------
+* 3) Keep only country rows
+*    (variable name may be regiontype or RegionType depending on import)
+*------------------------
+capture confirm variable regiontype
+if _rc==0 {
+    keep if regiontype == "country"
+}
+else {
+    capture confirm variable RegionType
+    if _rc==0 keep if RegionType == "country"
+    else {
+        di as error "Cannot find RegionType/regiontype column."
+        exit 198
+    }
+}
+
+*========================
+* 4) Identify date columns:
+*    If imported as variable names: "2000-01-31"
+*    If imported as labels:        varname "v6" label "2000-01-31"
+*    Rename to Stata-safe: dYYYYMMDD
+*========================
+ds
+local allvars `r(varlist)'
+local datevars ""
+
+foreach v of local allvars {
+
+    * Case A: date is already the variable NAME
+    if regexm("`v'", "^[0-9]{4}-[0-9]{2}-[0-9]{2}$") {
+        local new = "d" + subinstr("`v'","-","",.)
+        rename `"`v'"' `new'
+        local datevars "`datevars' `new'"
+    }
+    else {
+        * Case B: date is stored in the VARIABLE LABEL
+        local lab : variable label `v'
+        if regexm("`lab'", "^[0-9]{4}-[0-9]{2}-[0-9]{2}$") {
+            local new = "d" + subinstr("`lab'","-","",.)
+            rename `v' `new'
+            local datevars "`datevars' `new'"
+        }
+    }
+}
+
+if "`datevars'" == "" {
+    di as error "No date columns detected (neither as names nor as labels)."
+    exit 198
+}
+
+*========================
+* 5) Reshape wide -> long, parse month, output two columns
+*========================
+gen long _rowid = _n
+
+reshape long d, i(_rowid) j(yyyymmdd) string
+drop _rowid
+
+* yyyymmdd is like "20000131" after renaming to d20000131
+gen double daily_date = date(yyyymmdd, "YMD")
+format daily_date %td
+
+gen int month = mofd(daily_date)
+format month %tm
+
+gen double zillow_price_country_level = real(d)
+
+drop d yyyymmdd daily_date
+
+* If multiple country rows exist, collapse to a single country series
+collapse (mean) zillow_price_country_level, by(month)
+
+order month zillow_price_country_level
+sort month
+
+save "`out_dta'", replace
+di as txt "Saved: `out_dta'"
+
+log c
+
+
