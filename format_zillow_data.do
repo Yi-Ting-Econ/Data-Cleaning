@@ -2,7 +2,7 @@ capture log c
 clear all
 set more off
 
-cd "\\researchdrive.ssc.wisc.edu\project\housing cost channel\working_code\estimating_irf"
+cd "edit path here"
 
 /**********************************************************************
 Zillow CSV -> country-level monthly series (.dta)
@@ -19,7 +19,7 @@ log using "logfiles/format_zillow", replace t
 *========================
 * User settings
 *========================
-local in_csv  "data/Metro_zhvi_uc_sfrcondo_tier_0.33_0.67_sm_sa_month.csv"
+local in_csv  "data/Metro_zhvi_uc_sfrcondo_tier_0.33_0.67_sm_sa_month.csv" // raw data downloaded from Zillow
 local out_dta "data/zillow_price_country_level.dta"
 
 *========================
