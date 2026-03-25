@@ -1,0 +1,159 @@
+# %%
+# pip install xlrd openpyxl
+
+# ============================================================
+# Build a county-year FHFA conforming loan limit panel
+# ------------------------------------------------------------
+# Input:  local FHFA Excel files (.xls / .xlsx), one per year
+# Output: county_cll_2011_2025_with_state.csv
+#         county_cll_2011_2025_with_state.dta
+#
+# Final columns:
+#   year         = calendar year
+#   county_fips  = 5-digit county FIPS (state 2 digits + county 3 digits)
+#   state_name   = state name from FHFA
+#   cll_1unit    = one-unit conforming loan limit
+# ============================================================
+
+import re
+import pandas as pd
+
+# ----------------------------
+# 1. File paths and output names
+# ----------------------------
+START_YEAR = 2011
+END_YEAR = 2025
+
+OUT_CSV = "../output/county_cll_2011_2025_with_state.csv"
+OUT_DTA = "../output/county_cll_2011_2025_with_state.dta"
+
+LOCAL_FILES = {
+    2011: "../input/fhfa_cll_downloads/cll_2011.xls",
+    2012: "../input/fhfa_cll_downloads/cll_2012.xls",
+    2013: "../input/fhfa_cll_downloads/cll_2013.xls",
+    2014: "../input/fhfa_cll_downloads/cll_2014.xls",
+    2015: "../input/fhfa_cll_downloads/cll_2015.xlsx",
+    2016: "../input/fhfa_cll_downloads/cll_2016.xlsx",
+    2017: "../input/fhfa_cll_downloads/cll_2017.xlsx",
+    2018: "../input/fhfa_cll_downloads/cll_2018.xlsx",
+    2019: "../input/fhfa_cll_downloads/cll_2019.xlsx",
+    2020: "../input/fhfa_cll_downloads/cll_2020.xlsx",
+    2021: "../input/fhfa_cll_downloads/cll_2021.xlsx",
+    2022: "../input/fhfa_cll_downloads/cll_2022.xlsx",
+    2023: "../input/fhfa_cll_downloads/cll_2023.xlsx",
+    2024: "../input/fhfa_cll_downloads/cll_2024.xlsx",
+    2025: "../input/fhfa_cll_downloads/cll_2025.xlsx",
+}
+
+# ----------------------------
+# 2. Small helper functions
+# ----------------------------
+def clean_header(x):
+    """
+    Make Excel column names easier to match by:
+    - removing line breaks/tabs
+    - collapsing repeated spaces
+    - trimming leading/trailing spaces
+    """
+    x = str(x).replace("\n", " ").replace("\r", " ").replace("\t", " ")
+    return re.sub(r"\s+", " ", x).strip()
+
+
+def make_stata_safe(df):
+    """
+    Stata export is picky about string columns.
+    Convert object columns to pandas string type and clean punctuation.
+    """
+    df = df.copy()
+    for c in df.columns:
+        if df[c].dtype == "object":
+            df[c] = (
+                df[c].astype("string")
+                .str.replace("–", "-", regex=False)
+                .str.replace("—", "-", regex=False)
+                .str.replace("’", "'", regex=False)
+                .str.replace("“", '"', regex=False)
+                .str.replace("”", '"', regex=False)
+            )
+    return df
+
+
+def read_fhfa_file(path, year):
+    """
+    Read one FHFA yearly file and return a clean county-year dataframe.
+
+    Important:
+    - FHFA files usually have one title row above the true header,
+      so we use header=1.
+    - We only keep the columns needed for this project.
+    """
+    df = pd.read_excel(path, header=1, dtype=str)
+    df.columns = [clean_header(c) for c in df.columns]
+
+    # Keep only the columns needed to build county-level CLL
+    df = df[["FIPS State Code", "FIPS County Code", "State", "One-Unit Limit"]].copy()
+
+    # Build a 5-digit county FIPS:
+    #   state code = 2 digits
+    #   county code = 3 digits
+    df["county_fips"] = (
+        df["FIPS State Code"].str.extract(r"(\d+)", expand=False).str.zfill(2)
+        + df["FIPS County Code"].str.extract(r"(\d+)", expand=False).str.zfill(3)
+    )
+
+    # Convert one-unit loan limit from strings like "417,000" to numeric
+    df["cll_1unit"] = pd.to_numeric(
+        df["One-Unit Limit"].str.replace(",", "", regex=False).str.extract(r"(\d+)", expand=False),
+        errors="coerce"
+    ).astype("Int64")
+
+    # Keep state name for reference / future merges
+    df["state_name"] = df["State"].astype("string").fillna("").str.strip()
+
+    # Add year so each file becomes a county-year panel
+    df["year"] = year
+
+    # Keep final variables only
+    df = df[["year", "county_fips", "state_name", "cll_1unit"]]
+
+    # Drop rows missing the key variables
+    df = df.dropna(subset=["county_fips", "cll_1unit"])
+
+    return df
+
+
+# ----------------------------
+# 3. Loop over years and stack files
+# ----------------------------
+frames = []
+for year in range(START_YEAR, END_YEAR + 1):
+    print(f"Reading {year}: {LOCAL_FILES[year]}")
+    frames.append(read_fhfa_file(LOCAL_FILES[year], year))
+
+cll = pd.concat(frames, ignore_index=True)
+
+# ----------------------------
+# 4. Final cleanup
+# ----------------------------
+# If the same county-year appears more than once, keep one copy
+cll = cll.drop_duplicates(subset=["year", "county_fips"])
+
+# Sort so the output is easy to inspect and merge later
+cll = cll.sort_values(["county_fips", "year"]).reset_index(drop=True)
+
+# ----------------------------
+# 5. Save outputs
+# ----------------------------
+# CSV is convenient for quick inspection
+cll.to_csv(OUT_CSV, index=False)
+
+# DTA is convenient for Stata workflows
+make_stata_safe(cll).to_stata(OUT_DTA, write_index=False, version=118)
+
+print("\nSaved:")
+print(OUT_CSV)
+print(OUT_DTA)
+
+print("\nPreview:")
+print(cll.head())
+# %%
